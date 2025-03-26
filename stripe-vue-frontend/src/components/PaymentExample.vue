@@ -1,27 +1,48 @@
 <template>
     <div>
-      <h1>Save Payment Method</h1>
-      <form @submit.prevent="savePaymentMethod">
-        <div id="card-element"></div>
-        <button type="submit" :disabled="loading">
-          {{ loading ? "Saving..." : "Save Card" }}
+      <!-- Create Customer Flow -->
+      <h1>Create Customer</h1>
+      <form @submit.prevent="createCustomer">
+        <input type="email" v-model="email" placeholder="Enter email" required />
+        <input type="text" v-model="name" placeholder="Enter name (optional)" />
+        <button type="submit" :disabled="creatingCustomer">
+          {{ creatingCustomer ? "Creating..." : "Create Customer" }}
         </button>
-        <div v-if="error" class="error">{{ error }}</div>
+        <p v-if="customerError" class="error">{{ customerError }}</p>
+        <p v-if="customerId">
+          Customer created: <strong>{{ customerId }}</strong>
+        </p>
       </form>
   
       <hr />
   
+      <!-- Save Payment Method Flow -->
+      <h1>Save Payment Method</h1>
+      <form @submit.prevent="savePaymentMethod">
+        <div id="card-element"></div>
+        <button type="submit" :disabled="saving">
+          {{ saving ? "Saving..." : "Save Card" }}
+        </button>
+        <p v-if="saveError" class="error">{{ saveError }}</p>
+        <p v-if="savedPaymentMethod">
+          Payment Method Saved: <strong>{{ savedPaymentMethod }}</strong>
+        </p>
+      </form>
+  
+      <hr />
+  
+      <!-- Charge Payment Flow -->
       <h1>Charge Saved Payment Method</h1>
       <form @submit.prevent="chargePayment">
-        <input type="number" v-model="chargeAmount" placeholder="Amount in cents" />
-        <input type="text" v-model="currency" placeholder="Currency (e.g., usd)" />
+        <input type="number" v-model="chargeAmount" placeholder="Amount in cents" required />
+        <input type="text" v-model="chargeCurrency" placeholder="Currency (e.g., usd)" required />
         <button type="submit" :disabled="charging">
           {{ charging ? "Processing..." : "Charge Payment" }}
         </button>
-        <div v-if="chargeError" class="error">{{ chargeError }}</div>
-        <div v-if="paymentResult" class="success">
-          Payment successful: {{ paymentResult.id }}
-        </div>
+        <p v-if="chargeError" class="error">{{ chargeError }}</p>
+        <p v-if="chargeResult" class="success">
+          Payment successful: {{ chargeResult.id }}
+        </p>
       </form>
     </div>
   </template>
@@ -38,11 +59,25 @@
       const stripe = ref(null);
       const elements = ref(null);
       const cardElement = ref(null);
-      const loading = ref(false);
-      const error = ref(null);
-      const savedPaymentMethodId = ref(null);
-      // Replace with your customer ID (typically created on your backend).
-      const customerId = 'cus_YOUR_CUSTOMER_ID';
+  
+      // Customer creation state
+      const email = ref('');
+      const name = ref('');
+      const customerId = ref(null);
+      const creatingCustomer = ref(false);
+      const customerError = ref(null);
+  
+      // Payment method saving state
+      const saving = ref(false);
+      const saveError = ref(null);
+      const savedPaymentMethod = ref(null);
+  
+      // Payment charging state
+      const chargeAmount = ref('');
+      const chargeCurrency = ref('usd');
+      const charging = ref(false);
+      const chargeError = ref(null);
+      const chargeResult = ref(null);
   
       onMounted(async () => {
         stripe.value = await stripePromise;
@@ -51,75 +86,95 @@
         cardElement.value.mount('#card-element');
       });
   
-      // Save card using SetupIntent
-      const savePaymentMethod = async () => {
-        loading.value = true;
-        error.value = null;
-  
+      // Function: Create a customer on backend
+      const createCustomer = async () => {
+        creatingCustomer.value = true;
+        customerError.value = null;
         try {
-          // Request a SetupIntent from your Express backend.
-          const response = await fetch('http://localhost:3000/create-setup-intent', {
+          const res = await fetch('http://localhost:3000/create-customer', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ customerId })
+            body: JSON.stringify({ email: email.value, name: name.value })
           });
-          const data = await response.json();
+          const data = await res.json();
           if (data.error) {
             throw new Error(data.error);
           }
-          const clientSecret = data.clientSecret;
-  
-          // Confirm the SetupIntent using the card Element.
-          const { error: confirmError, setupIntent } = await stripe.value.confirmCardSetup(
-            clientSecret,
-            { payment_method: { card: cardElement.value } }
-          );
-  
-          if (confirmError) {
-            throw new Error(confirmError.message);
-          }
-          savedPaymentMethodId.value = setupIntent.payment_method;
-          console.log('Saved Payment Method ID:', savedPaymentMethodId.value);
+          // Save the customer ID returned from Stripe
+          customerId.value = data.id;
+          console.log('Created customer:', data.id);
         } catch (err) {
-          error.value = err.message;
+          customerError.value = err.message;
         } finally {
-          loading.value = false;
+          creatingCustomer.value = false;
         }
       };
   
-      // Variables for charging the saved payment method.
-      const chargeAmount = ref('');
-      const currency = ref('usd');
-      const charging = ref(false);
-      const chargeError = ref(null);
-      const paymentResult = ref(null);
+      // Function: Save card using SetupIntent
+      const savePaymentMethod = async () => {
+        if (!customerId.value) {
+          saveError.value = 'Please create a customer first.';
+          return;
+        }
+        saving.value = true;
+        saveError.value = null;
+        try {
+          // Request a SetupIntent from the backend with a valid customer ID.
+          const res = await fetch('http://localhost:3000/create-setup-intent', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ customerId: customerId.value })
+          });
+          const data = await res.json();
+          if (data.error) throw new Error(data.error);
+          const clientSecret = data.clientSecret;
   
-      // Charge the saved payment method using a PaymentIntent.
+          // Confirm the SetupIntent on-session so that the customer can complete any required authentication.
+          const { error, setupIntent } = await stripe.value.confirmCardSetup(
+            clientSecret,
+            {
+              payment_method: { card: cardElement.value }
+            }
+          );
+  
+          if (error) throw new Error(error.message);
+          savedPaymentMethod.value = setupIntent.payment_method;
+          console.log('Saved Payment Method:', setupIntent.payment_method);
+        } catch (err) {
+          saveError.value = err.message;
+        } finally {
+          saving.value = false;
+        }
+      };
+  
+      // Function: Charge the saved payment method.
       const chargePayment = async () => {
+        if (!customerId.value) {
+          chargeError.value = 'Customer ID is missing. Please create a customer first.';
+          return;
+        }
+        if (!savedPaymentMethod.value) {
+          chargeError.value = 'No saved payment method found. Please save a card first.';
+          return;
+        }
         charging.value = true;
         chargeError.value = null;
-        paymentResult.value = null;
-  
+        chargeResult.value = null;
         try {
-          if (!savedPaymentMethodId.value) {
-            throw new Error('No saved payment method found. Please save a card first.');
-          }
-          const response = await fetch('http://localhost:3000/charge', {
+          const res = await fetch('http://localhost:3000/charge', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              customerId,
-              paymentMethodId: savedPaymentMethodId.value,
+              customerId: customerId.value,
+              paymentMethodId: savedPaymentMethod.value,
               amount: parseInt(chargeAmount.value, 10),
-              currency: currency.value
+              currency: chargeCurrency.value,
             })
           });
-          const result = await response.json();
-          if (result.error) {
-            throw new Error(result.error);
-          }
-          paymentResult.value = result;
-          console.log('Payment successful:', result);
+          const data = await res.json();
+          if (data.error) throw new Error(data.error);
+          chargeResult.value = data;
+          console.log('Charge successful:', data);
         } catch (err) {
           chargeError.value = err.message;
         } finally {
@@ -128,17 +183,24 @@
       };
   
       return {
+        email,
+        name,
+        customerId,
+        creatingCustomer,
+        customerError,
+        createCustomer,
+        saving,
+        saveError,
+        savedPaymentMethod,
         savePaymentMethod,
-        loading,
-        error,
-        chargePayment,
         chargeAmount,
-        currency,
+        chargeCurrency,
         charging,
         chargeError,
-        paymentResult
+        chargeResult,
+        chargePayment,
       };
-    }
+    },
   };
   </script>
   
