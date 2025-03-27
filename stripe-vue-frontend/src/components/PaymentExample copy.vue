@@ -50,7 +50,7 @@
     name: 'PaymentExample',
     setup() {
       // Replace with your own Stripe publishable key.
-      const stripePromise = loadStripe('pk_test_51QbliuP2kqOTkjJT3GygobjbmldAEROcxv6O1bpIll6dyDgNRp9d3YJkv84Rp4VQLgXPIwyoTIRoZTxI6BWXgJzf00buCH8JRw');
+      const stripePromise = loadStripe('');
       const stripe = ref(null);
       const elements = ref(null);
       const cardElement = ref(null);

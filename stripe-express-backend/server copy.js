@@ -4,7 +4,7 @@ const cors = require('cors');
 const Stripe = require('stripe');
 
 const app = express();
-const stripe = Stripe('sk_test_51QbliuP2kqOTkjJTpRyqqpDDSPmEdY6ZIE6XWxXVwZnLAXKpUSMNp7GhNKuVuRJWDr4hFoLwGHIQeKhDZKVzciAl004XiNJL3q'); // replace with your secret key
+const stripe = Stripe(''); // replace with your secret key
  // Replace with your Stripe secret key
 
 // Enable CORS for all routes. Optionally, restrict to your frontend's origin.
